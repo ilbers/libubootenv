@@ -1,0 +1,5 @@
+libubootenv (0.1-1) unstable; urgency=low
+
+  * Initial release. (Closes: #929047)
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 16 Apr 2019 09:48:44 +0900

@@ -1,0 +1,31 @@
+From d42398c4a45b40decdfa3cff0af3b9cc1b0c5aed Mon Sep 17 00:00:00 2001
+From: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
+Date: Tue, 16 Apr 2019 08:54:14 +0900
+Subject: [PATCH 3/4] Change name of the output static library to libubootenv.a
+
+This changes of the output static library from libubootenv_static.a to
+libubootenv.a.
+
+Signed-off-by: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
+---
+ src/CMakeLists.txt | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index d97f221..b136967 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -14,6 +14,10 @@ add_library(ubootenv SHARED ${libubootenv_SOURCES} ${include_HEADERS})
+ set_target_properties(ubootenv PROPERTIES SOVERSION ${SOVERSION})
+ 
+ add_library(ubootenv_static STATIC ${libubootenv_SOURCES} ${include_HEADERS})
++set_target_properties(ubootenv_static PROPERTIES
++  SOVERSION ${SOVERSION} ARCHIVE_OUTPUT_NAME ubootenv
++)
++
+ add_executable(fw_printenv fw_printenv.c)
+ add_executable(fw_setenv fw_setenv.c)
+ target_link_libraries(fw_printenv ubootenv z)
+-- 
+2.20.1
+
