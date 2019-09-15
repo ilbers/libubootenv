@@ -1,3 +1,9 @@
+libubootenv (0.1-2) unstable; urgency=medium
+
+  * Add u-boot-tools Conflicts of libubootenv-tool (Closes: #939598)
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 16 Sep 2019 06:30:21 +0900
+
 libubootenv (0.1-1) unstable; urgency=low
 
   * Initial release. (Closes: #929047)

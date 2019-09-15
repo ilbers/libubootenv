@@ -42,6 +42,7 @@ Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${shlibs:Depends}, ${misc:Depends}, libubootenv0.1 (= ${binary:Version})
 Multi-Arch: foreign
+Conflicts: u-boot-tools
 Description: Library to access U-Boot environment - tool
  libubootenv is a library that provides a hardware independent way to access
  to U-Boot environment. U-Boot has its default environment compiled
