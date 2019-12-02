@@ -1,3 +1,11 @@
+libubootenv (0.1-5) unstable; urgency=medium
+
+  * Add Versioned Conflicts with u-boot-tools, as newer
+    versions of u-boot-tools actually recommend libubootenv-tools.
+    (Closes: #944644)
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 02 Dec 2019 10:57:30 +0900
+
 libubootenv (0.1-4) unstable; urgency=medium
 
   * Fix build reproducible. (Closes: #939547)
