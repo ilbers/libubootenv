@@ -1,3 +1,9 @@
+libubootenv (0.2-1) UNRELEASED; urgency=medium
+
+  * Update to 0.2.
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Fri, 31 Jan 2020 23:34:51 +0900
+
 libubootenv (0.1-5) unstable; urgency=medium
 
   * Add Versioned Conflicts with u-boot-tools, as newer
