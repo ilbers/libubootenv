@@ -1,4 +1,4 @@
-From d42398c4a45b40decdfa3cff0af3b9cc1b0c5aed Mon Sep 17 00:00:00 2001
+From 295dc5db62ce90c0c0fc4016510c1f2453f71d7e Mon Sep 17 00:00:00 2001
 From: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
 Date: Tue, 16 Apr 2019 08:54:14 +0900
 Subject: [PATCH 3/4] Change name of the output static library to libubootenv.a
@@ -27,5 +27,5 @@ index d97f221..b136967 100644
  add_executable(fw_setenv fw_setenv.c)
  target_link_libraries(fw_printenv ubootenv z)
 -- 
-2.20.1
+2.24.0
 

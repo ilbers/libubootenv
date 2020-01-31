@@ -1,4 +1,4 @@
-From 2968afc0969ce2f809065b69fe0ce14885eed1f3 Mon Sep 17 00:00:00 2001
+From df59dd1a354ed213d568306b074129ead2c5e057 Mon Sep 17 00:00:00 2001
 From: Nobuhiro Iwamatsu <iwamatsu@debian.org>
 Date: Tue, 16 Apr 2019 08:49:07 +0900
 Subject: [PATCH 1/4] Unifies the functionality provided by CMake to lowercase
@@ -13,18 +13,18 @@ Signed-off-by: Nobuhiro Iwamatsu <iwamatsu@debian.org>
  2 files changed, 5 insertions(+), 5 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 118fc32..2b61b91 100644
+index c7e0d2a..104969e 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -5,7 +5,7 @@ project (libubootenv C)
  # set (libubootenv_VERSION_MAJOR 1)
  # set (libubootenv_VERSION_MAJOR_VERSION_MINOR 0)
- set(VERSION	"0.1")
+ set(VERSION	"0.2")
 -SET(SOVERSION "${VERSION}")
 +set(SOVERSION "${VERSION}")
  add_definitions(-DVERSION="${VERSION}")
  
- #set(CMAKE_C_FLAGS_DEBUG "-g")
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index 051732b..ea5979c 100644
 --- a/src/CMakeLists.txt
@@ -54,5 +54,5 @@ index 051732b..ea5979c 100644
  add_executable(fw_setenv fw_setenv.c)
  target_link_libraries(fw_printenv ubootenv z)
 -- 
-2.20.1
+2.24.0
 

@@ -1,4 +1,4 @@
-From 14b6a4e279155ba0cb018eb1c56e4bec86f3f729 Mon Sep 17 00:00:00 2001
+From b17d194bd8285a19382a902a0bec9e5e042df064 Mon Sep 17 00:00:00 2001
 From: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
 Date: Tue, 16 Apr 2019 08:52:01 +0900
 Subject: [PATCH 2/4] Add support GNUInstallDirs
@@ -15,18 +15,18 @@ Signed-off-by: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
  2 files changed, 6 insertions(+), 4 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 2b61b91..dabccc7 100644
+index 104969e..1d66f60 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -8,6 +8,8 @@ set(VERSION	"0.1")
- set(SOVERSION "${VERSION}")
- add_definitions(-DVERSION="${VERSION}")
+@@ -14,6 +14,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
+ include_directories ("${PROJECT_SOURCE_DIR}/src")
+ add_subdirectory (src)
  
 +include("GNUInstallDirs")
 +
- #set(CMAKE_C_FLAGS_DEBUG "-g")
- include_directories ("${PROJECT_SOURCE_DIR}/src")
- add_subdirectory (src)
+ # first we can indicate the documentation build as an option and set it to ON by default
+ option(BUILD_DOC "Build documentation" ON)
+ 
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index ea5979c..d97f221 100644
 --- a/src/CMakeLists.txt
@@ -44,5 +44,5 @@ index ea5979c..d97f221 100644
 +install (TARGETS fw_printenv DESTINATION "${CMAKE_INSTALL_BINDIR}")
 +install (TARGETS fw_setenv DESTINATION "${CMAKE_INSTALL_BINDIR}")
 -- 
-2.20.1
+2.24.0
 
