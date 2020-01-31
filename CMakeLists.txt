@@ -4,9 +4,11 @@ project (libubootenv C)
 # The version number.
 # set (libubootenv_VERSION_MAJOR 1)
 # set (libubootenv_VERSION_MAJOR_VERSION_MINOR 0)
-set(VERSION	"0.1")
+set(VERSION	"0.2")
 SET(SOVERSION "${VERSION}")
 add_definitions(-DVERSION="${VERSION}")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 
 #set(CMAKE_C_FLAGS_DEBUG "-g")
 include_directories ("${PROJECT_SOURCE_DIR}/src")

@@ -11,6 +11,8 @@
  * @brief This is the implementation of libubootenv library
  *
  */
+ 
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +24,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
-#include <pthread.h>
 #include <signal.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -30,11 +31,17 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <zlib.h>
-#include <linux/stat.h>
 #include <mtd/mtd-user.h>
 #include <mtd/ubi-user.h>
 
 #include "uboot_private.h"
+
+#define UBI_MAX_VOLUME			128
+
+#define DEVICE_MTD_NAME 		"/dev/mtd"
+#define DEVICE_UBI_NAME 		"/dev/ubi"
+#define SYS_UBI_VOLUME_COUNT		"/sys/class/ubi/ubi%d/volumes_count"
+#define SYS_UBI_VOLUME_NAME		"/sys/class/ubi/ubi%d/ubi%d_%d/name"
 
 #define	LIST_FOREACH_SAFE(var, head, field, tvar)			\
 	for ((var) = LIST_FIRST((head));				\
@@ -100,7 +107,7 @@ static char access_tostring(access_attribute a)
 	case ACCESS_ATTR_READ_ONLY:
 		return 'r';
 	case ACCESS_ATTR_WRITE_ONCE:
-		return 'w';
+		return 'o';
 	case ACCESS_ATTR_CHANGE_DEFAULT:
 		return 'c';
 	}
@@ -139,10 +146,166 @@ static void remove_var(struct vars *envs, const char *varname)
 	free_var_entry(envs, entry);
 }
 
+static enum device_type get_device_type(char *device)
+{
+	enum device_type type = DEVICE_NONE;
+
+	if (!strncmp(device, DEVICE_MTD_NAME, strlen(DEVICE_MTD_NAME)))
+		type = DEVICE_MTD;
+	else if (!strncmp(device, DEVICE_UBI_NAME, strlen(DEVICE_UBI_NAME)))
+		type = DEVICE_UBI;
+	else if (strlen(device) > 0)
+		type = DEVICE_FILE;
+
+	return type;
+}
+
+static int ubi_get_dev_id(char *device)
+{
+	int dev_id = -1;
+	char *sep;
+
+	sep = rindex(device, 'i');
+	if (sep)
+		sscanf(sep + 1, "%d", &dev_id);
+
+	return dev_id;
+}
+
+static int ubi_get_num_volume(char *device)
+{
+	char filename[DEVNAME_MAX_LENGTH];
+	char data[DEVNAME_MAX_LENGTH];
+	int dev_id, fd, n, num_vol = -1;
+
+	dev_id = ubi_get_dev_id(device);
+	if (dev_id < 0)
+		return -1;
+
+	snprintf(filename, sizeof(filename), SYS_UBI_VOLUME_COUNT, dev_id);
+	fd = open(filename, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	n = read(fd, data, sizeof(data));
+	if (n < 0)
+		goto out;
+
+	if (sscanf(data, "%d", &num_vol) != 1)
+		num_vol = -1;
+
+out:
+	close(fd);
+	return num_vol;
+}
+
+static int ubi_get_volume_name(char *device, int vol_id, char vol_name[DEVNAME_MAX_LENGTH])
+{
+	char filename[80];
+	char data[DEVNAME_MAX_LENGTH];
+	int dev_id, fd, n, ret = -1;
+
+	dev_id = ubi_get_dev_id(device);
+	if (dev_id < 0)
+		return -1;
+
+	snprintf(filename, sizeof(filename), SYS_UBI_VOLUME_NAME, dev_id, dev_id, vol_id);
+	fd = open(filename, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	memset(data, 0, DEVNAME_MAX_LENGTH);
+	n = read(fd, data, DEVNAME_MAX_LENGTH);
+	if (n < 0)
+		goto out;
+
+	memset(vol_name, 0, DEVNAME_MAX_LENGTH);
+	if (sscanf(data, "%s", vol_name) != 1)
+		goto out;
+
+	ret = 0;
+
+out:
+	close(fd);
+	return ret;
+}
+
+static int ubi_get_vol_id(char *device, char *volname)
+{
+	int i, n, ret, num_vol, vol_id = -1;
+
+	num_vol = ubi_get_num_volume(device);
+	if (num_vol < 0)
+		goto out;
+
+	i = 0;
+	n = 0;
+	while ((n < num_vol) && (i < UBI_MAX_VOLUME))
+	{
+		char name[DEVNAME_MAX_LENGTH];
+
+		ret = ubi_get_volume_name(device, i, name);
+		if (!ret && !strcmp(name, volname)) {
+			vol_id = i;
+			break;
+		}
+
+		i++;
+		if (!ret)
+			n++;
+	}
+
+out:
+	return vol_id;
+}
+
+static int ubi_update_name(struct uboot_flash_env *dev)
+{
+	char device[DEVNAME_MAX_LENGTH];
+	char volume[DEVNAME_MAX_LENGTH];
+	int dev_id, vol_id, ret = -EBADF;
+	char *sep;
+
+	sep = index(dev->devname, ':');
+	if (sep)
+	{
+		memset(device, 0, DEVNAME_MAX_LENGTH);
+		memcpy(device, dev->devname, sep - dev->devname);
+
+		memset(volume, 0, DEVNAME_MAX_LENGTH);
+		sscanf(sep + 1, "%s", &volume[0]);
+
+		dev_id = ubi_get_dev_id(device);
+		if (dev_id < 0)
+			goto out;
+
+		vol_id = ubi_get_vol_id(device, volume);
+		if (vol_id < 0)
+			goto out;
+
+		sprintf(dev->devname, "%s_%d", device, vol_id);
+	}
+
+	ret = 0;
+
+out:
+	return ret;
+}
+
 static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
 {
 	int fd, ret;
 	struct stat st;
+
+	dev->device_type = get_device_type(dev->devname);
+	if (dev->device_type == DEVICE_NONE)
+		return -EBADF;
+
+	if (dev->device_type == DEVICE_UBI) {
+		ret = ubi_update_name(dev);
+		if (ret)
+			return ret;
+	}
 
 	ret = stat(dev->devname, &st);
 	if (ret < 0)
@@ -152,29 +315,36 @@ static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
 		return -EBADF;
 
 	if (S_ISCHR(st.st_mode)) {
-		ret = ioctl(fd, MEMGETINFO, &dev->mtdinfo);
-		if (ret < 0 || (dev->mtdinfo.type != MTD_NORFLASH &&
-		    dev->mtdinfo.type != MTD_NANDFLASH &&
-		    dev->mtdinfo.type != MTD_DATAFLASH &&
-		    dev->mtdinfo.type != MTD_UBIVOLUME)) {
-			close(fd);
-			return -EBADF;
+		if (dev->device_type == DEVICE_MTD) {
+			ret = ioctl(fd, MEMGETINFO, &dev->mtdinfo);
+			if (ret < 0 || (dev->mtdinfo.type != MTD_NORFLASH &&
+					dev->mtdinfo.type != MTD_NANDFLASH)) {
+				close(fd);
+				return -EBADF;
+			}
 		}
-	} else {
-		dev->mtdinfo.type = MTD_ABSENT;
 	}
 
-	switch (dev->mtdinfo.type ) {
-	case MTD_NORFLASH:
-	case MTD_DATAFLASH: 
-		dev->flagstype = FLAGS_BOOLEAN;
-		break;
-	case MTD_NANDFLASH: 
-	case MTD_UBIVOLUME: 
-	case MTD_ABSENT: 
+	switch (dev->device_type) {
+	case DEVICE_FILE:
 		dev->flagstype = FLAGS_INCREMENTAL;
 		break;
-	}
+	case DEVICE_MTD:
+		switch (dev->mtdinfo.type) {
+		case MTD_NORFLASH:
+			dev->flagstype = FLAGS_BOOLEAN;
+			break;
+		case MTD_NANDFLASH:
+			dev->flagstype = FLAGS_INCREMENTAL;
+		};
+		break;
+	case DEVICE_UBI:
+		dev->flagstype = FLAGS_INCREMENTAL;
+		break;
+	default:
+		close(fd);
+		return -EBADF;
+	};
 
 	close(fd);
 
@@ -207,24 +377,26 @@ static int is_nand_badblock(struct uboot_flash_env *dev, loff_t start)
 	return bad;
 }
 
-static int devread(struct uboot_ctx *ctx, unsigned int copy, void *data)
+static int fileread(struct uboot_flash_env *dev, void *data)
 {
 	int ret;
-	struct uboot_flash_env *dev;
+
+	if (dev->offset)
+		lseek(dev->fd, dev->offset, SEEK_SET);
+
+	ret = read(dev->fd, data, dev->envsize);
+
+	return ret;
+}
+
+static int mtdread(struct uboot_flash_env *dev, void *data)
+{
 	size_t count;
 	size_t blocksize;
 	loff_t start;
 	void *buf;
 	int sectors, skip;
-
-	if (copy > 1)
-		return -EINVAL;
-
-	dev = &ctx->envdevs[copy];
-
-   	dev->fd = open(dev->devname, O_RDONLY);
-   	if (dev->fd < 0)
-    		return -EBADF;
+	int ret = 0;
 
 	switch (dev->mtdinfo.type) {
 	case MTD_ABSENT:
@@ -274,19 +446,148 @@ static int devread(struct uboot_ctx *ctx, unsigned int copy, void *data)
 			start += dev->sectorsize;
 			data += blocksize;
 			count -= blocksize;
+			ret += blocksize;
 		}
-		ret = count;
 		break;
 	}
+
+	return ret;
+}
+
+static int ubiread(struct uboot_flash_env *dev, void *data)
+{
+	int ret = 0;
+
+	ret = read(dev->fd, data, dev->envsize);
+
+	return ret;
+}
+
+static int devread(struct uboot_ctx *ctx, unsigned int copy, void *data)
+{
+	int ret;
+	struct uboot_flash_env *dev;
+
+	if (copy > 1)
+		return -EINVAL;
+
+	dev = &ctx->envdevs[copy];
+
+	dev->fd = open(dev->devname, O_RDONLY);
+	if (dev->fd < 0)
+		return -EBADF;
+
+	switch (dev->device_type) {
+	case DEVICE_FILE:
+		ret = fileread(dev, data);
+		break;
+	case DEVICE_MTD:
+		ret = mtdread(dev, data);
+		break;
+	case DEVICE_UBI:
+		ret = ubiread(dev, data);
+		break;
+	default:
+		ret = -1;
+		break;
+	};
 
 	close(dev->fd);
 	return ret;
 }
 
-static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
+static int fileprotect(struct uboot_flash_env *dev, bool on)
+{
+	const char c_sys_path_1[] = "/sys/class/block/";
+	const char c_sys_path_2[] = "/force_ro";
+	const char c_dev_name_1[] = "mmcblk";
+	const char c_dev_name_2[] = "boot";
+	const char c_unprot_char = '0';
+	const char c_prot_char = '1';
+	const char *devfile = dev->devname;
+	int ret = 0;  // 0 means OK, negative means error
+	int ret_int = 0;
+	char *sysfs_path = NULL;
+	int fd_force_ro;
+
+	// Devices without ro flag at /sys/class/block/mmcblk?boot?/force_ro are ignored
+	if (strncmp("/dev/", dev->devname, 5) == 0) {
+		devfile = dev->devname + 5;
+	} else {
+		return ret;
+	}
+
+	ret_int = strncmp(devfile, c_dev_name_1, sizeof(c_dev_name_1) - 1);
+	if (ret_int != 0) {
+		return ret;
+	}
+
+	if (strncmp(devfile + sizeof(c_dev_name_1), c_dev_name_2, sizeof(c_dev_name_2) - 1) != 0) {
+		return ret;
+	}
+
+	if (*(devfile + sizeof(c_dev_name_1) - 1) < '0' ||
+	    *(devfile + sizeof(c_dev_name_1) - 1) > '9') {
+		return ret;
+	}
+
+	if (*(devfile + sizeof(c_dev_name_1) + sizeof(c_dev_name_2) - 1) < '0' ||
+	    *(devfile + sizeof(c_dev_name_1) + sizeof(c_dev_name_2) - 1) > '9') {
+		return ret;
+	}
+
+	// There is a ro flag, the device needs to be protected or unprotected
+	ret_int = asprintf(&sysfs_path, "%s%s%s", c_sys_path_1, devfile, c_sys_path_2);
+	if(ret_int < 0) {
+		ret = -ENOMEM;
+		goto fileprotect_out;
+	}
+
+	if (access(sysfs_path, W_OK) == -1) {
+		goto fileprotect_out;
+	}
+
+	fd_force_ro = open(sysfs_path, O_RDWR);
+	if (fd_force_ro == -1) {
+		ret = -EBADF;
+		goto fileprotect_out;
+	}
+
+	if(on == false){
+		ret_int = write(fd_force_ro, &c_unprot_char, 1);
+	} else {
+		fsync(dev->fd);
+		ret_int = write(fd_force_ro, &c_prot_char, 1);
+	}
+	close(fd_force_ro);
+
+fileprotect_out:
+	if(sysfs_path)
+		free(sysfs_path);
+	return ret;
+}
+
+static int filewrite(struct uboot_flash_env *dev, void *data)
 {
 	int ret;
-	struct uboot_flash_env *dev;
+
+	ret = fileprotect(dev, false);
+	if (ret < 0)
+		return ret;
+
+	if (dev->offset)
+		lseek(dev->fd, dev->offset, SEEK_SET);
+
+	ret = write(dev->fd, data, dev->envsize);
+
+	fileprotect(dev, true);  // no error handling, keep ret from write
+
+	return ret;
+}
+
+static int mtdwrite(struct uboot_flash_env *dev, void *data)
+{
+	int ret;
 	struct erase_info_user erase;
 	size_t count;
 	size_t blocksize;
@@ -294,21 +595,7 @@ static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
 	void *buf;
 	int sectors, skip;
 
-	if (copy > 1)
-		return -EINVAL;
-
-	dev = &ctx->envdevs[copy];
-
-   	dev->fd = open(dev->devname, O_RDWR);
-   	if (dev->fd < 0)
-    		return -EBADF;
-
 	switch (dev->mtdinfo.type) {
-	case MTD_ABSENT:
-		if (dev->offset)
-			lseek(dev->fd, dev->offset, SEEK_SET);
-		ret = write(dev->fd, data, dev->envsize);
-		break;
 	case MTD_NORFLASH:
 	case MTD_NANDFLASH:
 		count = dev->envsize;
@@ -317,6 +604,7 @@ static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
 		erase.length = dev->sectorsize;
 		sectors = dev->envsectors ? dev->envsectors : 1;
 		buf = data;
+		ret = 0;
 
 		while (count > 0) {
 			erase.start = start;
@@ -361,11 +649,61 @@ static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
 			start += dev->sectorsize;
 			buf += blocksize;
 			count -= blocksize;
+			ret += blocksize;
 		}
 		break;
 	}
 
 devwrite_out:
+	return ret;
+}
+
+static int ubi_update_volume(struct uboot_flash_env *dev)
+{
+	return ioctl(dev->fd, UBI_IOCVOLUP, &dev->envsize);
+}
+
+static int ubiwrite(struct uboot_flash_env *dev, void *data)
+{
+	int ret;
+
+	if (ubi_update_volume(dev) < 0)
+		return -1;
+
+	ret = write(dev->fd, data, dev->envsize);
+
+	return ret;
+}
+
+static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
+{
+	int ret;
+	struct uboot_flash_env *dev;
+
+	if (copy > 1)
+		return -EINVAL;
+
+	dev = &ctx->envdevs[copy];
+
+	dev->fd = open(dev->devname, O_RDWR);
+	if (dev->fd < 0)
+		return -EBADF;
+
+	switch (dev->device_type) {
+	case DEVICE_FILE:
+		ret = filewrite(dev, data);
+		break;
+	case DEVICE_MTD:
+		ret = mtdwrite(dev, data);
+		break;
+	case DEVICE_UBI:
+		ret = ubiwrite(dev, data);
+		break;
+	default:
+		ret = -1;
+		break;
+	};
+
 	close(dev->fd);
 
 	return ret;
@@ -506,6 +844,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 	uint8_t offsetcrc = offsetof(struct uboot_env_noredund, crc);
 	uint8_t offsetflags = offsetof(struct uboot_env_redund, flags);
 	uint8_t *data;
+	struct var_entry *entry;
 
 	ctx->valid = false;
 
@@ -585,6 +924,8 @@ static int libuboot_load(struct uboot_ctx *ctx)
 
 	data = (uint8_t *)(buf[ctx->current] + offsetdata);
 
+	char *flagsvar = NULL;
+
 	if (ctx->valid) {
 		for (line = data; *line; line = next + 1) {
 			char *name, *value, *tmp;
@@ -605,9 +946,81 @@ static int libuboot_load(struct uboot_ctx *ctx)
 
 			*value++ = '\0';
 
-			libuboot_set_env(ctx, line, value);
+			if (!strcmp(line, ".flags"))
+				flagsvar = strdup(value);
+			else
+				libuboot_set_env(ctx, line, value);
 		}
 	}
+
+	/*
+	 * Parse .flags and set the attributes for a variable
+	 */
+	char *pvar;
+	char *pval;
+	if (flagsvar) {
+#if !defined(NDEBUG)
+	fprintf(stdout, "Environment FLAGS %s\n", flagsvar);
+#endif
+		pvar = flagsvar;
+
+		while (*pvar && (pvar - flagsvar) < strlen(flagsvar)) {
+			char *pnext;
+			pval = strchr(pvar, ':');
+			if (!pval)
+				break;
+
+			*pval++ = '\0';
+			pnext = strchr(pval, ',');
+			if (!pnext)
+				pnext = flagsvar + strlen(flagsvar);
+			else
+				*pnext++ = '\0';
+
+			entry = __libuboot_get_env(&ctx->varlist, pvar);
+			if (entry) {
+				for (int i = 0; i < strlen(pval); i++) {
+					switch (pval[i]) {
+					case 's':
+						entry->type = TYPE_ATTR_STRING;
+						break;
+					case 'd':
+						entry->type = TYPE_ATTR_DECIMAL;
+						break;
+					case 'x':
+						entry->type = TYPE_ATTR_HEX;
+						break;
+					case 'b':
+						entry->type = TYPE_ATTR_BOOL;
+						break;
+					case 'i':
+						entry->type = TYPE_ATTR_IP;
+						break;
+					case 'm':
+						entry->type = TYPE_ATTR_MAC;
+						break;
+					case 'a':
+						entry->access = ACCESS_ATTR_ANY;
+						break;
+					case 'r':
+						entry->access = ACCESS_ATTR_READ_ONLY;
+						break;
+					case 'o':
+						entry->access = ACCESS_ATTR_WRITE_ONCE;
+						break;
+					case 'c':
+						entry->access = ACCESS_ATTR_CHANGE_DEFAULT;
+						break;
+					default: /* ignore it */
+						break;
+					}
+				}
+			}
+
+			pvar = pnext;
+		}
+	}
+	free(flagsvar);
 
 	free(buf[0]);
 
@@ -687,7 +1100,7 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 		if (line[0] == '#')
 			continue;
 
-		ret = sscanf(line, "%ms %lli %lx %lx %lx",
+		ret = sscanf(line, "%ms %lli %zx %zx %lx",
 				&tmp,
 				&dev->offset,
 				&dev->envsize,
@@ -695,7 +1108,7 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 				&dev->envsectors);
 
 		/*
-		 * At least name ofsset and size shopuld be set
+		 * At least name offset and size should be set
 		 */
 		if (ret < 3 || !tmp)
 			continue;

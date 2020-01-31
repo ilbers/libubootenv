@@ -8,7 +8,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <sys/queue.h>
+#include <mtd/mtd-user.h>
 #include "libuboot.h"
 
 typedef enum {
@@ -31,6 +33,13 @@ enum flags_type {
 	FLAGS_NONE,
 	FLAGS_BOOLEAN,
 	FLAGS_INCREMENTAL
+};
+
+enum device_type {
+	DEVICE_NONE,
+	DEVICE_FILE,
+	DEVICE_MTD,
+	DEVICE_UBI,
 };
 
 /**
@@ -76,6 +85,8 @@ struct uboot_flash_env {
 	unsigned char		flags;
  	/** flags according to device type */
 	enum flags_type		flagstype;
+	/** type of device (mtd, ubi, file, ....) */
+	enum device_type	device_type;
 };
 
 /** Internal structure for an environment variable

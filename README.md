@@ -1,6 +1,8 @@
 libubootenv - Library to access U-Boot environment
 ==================================================
 
+[![Build Status](https://travis-ci.org/sbabic/libubootenv.svg?branch=master)](https://travis-ci.org/sbabic/libubootenv)
+
 libubootenv is a library that provides a hardware independent way to access
 to U-Boot environment. U-Boot has its default environment compiled board-dependently
 and this means that tools to access the environment are also board specific, too.
@@ -42,6 +44,11 @@ OE / Yocto support
 ------------------
 
 Recipe is provided in meta-swupdate layer https://github.com/sbabic/meta-swupdate.git 
+
+Buildroot support
+-----------------
+
+Package is provided in https://git.buildroot.net/buildroot/tree/package/libubootenv
 
 Contributing to the project
 ---------------------------
