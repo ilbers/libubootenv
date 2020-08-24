@@ -5,12 +5,15 @@
  * SPDX-License-Identifier:     LGPL-2.1-or-later
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #pragma once
 
 struct uboot_ctx;
 
-#define DEVNAME_MAX_LENGTH	40
+#define DEVNAME_MAX_LENGTH	256
 
 /** Configuration passed in initialization 
  *
@@ -153,3 +156,7 @@ const char *libuboot_getname(void *entry);
  * @return pointer to name or NULL
  */
 const char *libuboot_getvalue(void *entry);
+
+#ifdef __cplusplus
+}
+#endif

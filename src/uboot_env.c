@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <limits.h>
+#include <linux/fs.h>
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -322,6 +324,9 @@ static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
 				close(fd);
 				return -EBADF;
 			}
+			if (dev->sectorsize == 0) {
+				dev->sectorsize = dev->mtdinfo.erasesize;
+			}
 		}
 	}
 
@@ -346,6 +351,23 @@ static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
 		return -EBADF;
 	};
 
+	/*
+	 * Check for negative offsets, treat it as backwards offset
+	 * from the end of the block device
+	 */
+	if (dev->offset < 0) {
+		uint64_t blkdevsize;
+		int rc;
+
+		rc = ioctl(fd, BLKGETSIZE64, &blkdevsize);
+		if (rc < 0) {
+			close(fd);
+			return -EINVAL;
+		}
+
+		dev->offset += blkdevsize;
+	}
+
 	close(fd);
 
 	return 0;
@@ -353,8 +375,6 @@ static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
 
 static bool check_compatible_devices(struct uboot_ctx *ctx)
 {
-	struct uboot_flash_env *dev;
-
 	if (!ctx->redundant)
 		return true;
 
@@ -379,10 +399,13 @@ static int is_nand_badblock(struct uboot_flash_env *dev, loff_t start)
 
 static int fileread(struct uboot_flash_env *dev, void *data)
 {
-	int ret;
+	int ret = 0;
 
 	if (dev->offset)
-		lseek(dev->fd, dev->offset, SEEK_SET);
+		ret = lseek(dev->fd, dev->offset, SEEK_SET);
+
+	if (ret < 0)
+		return ret;
 
 	ret = read(dev->fd, data, dev->envsize);
 
@@ -394,7 +417,6 @@ static int mtdread(struct uboot_flash_env *dev, void *data)
 	size_t count;
 	size_t blocksize;
 	loff_t start;
-	void *buf;
 	int sectors, skip;
 	int ret = 0;
 
@@ -402,23 +424,27 @@ static int mtdread(struct uboot_flash_env *dev, void *data)
 	case MTD_ABSENT:
 	case MTD_NORFLASH:
 		if (dev->offset)
-			lseek(dev->fd, dev->offset, SEEK_SET);
+			if (lseek(dev->fd, dev->offset, SEEK_SET) < 0) {
+				ret = -EIO;
+				break;
+			}
 		ret = read(dev->fd, data, dev->envsize);
 		break;
 	case MTD_NANDFLASH:
 		if (dev->offset)
-			lseek(dev->fd, dev->offset, SEEK_SET);
+			if (lseek(dev->fd, dev->offset, SEEK_SET) < 0) {
+				ret = -EIO;
+				break;
+			}
 
 		count = dev->envsize;
 		start = dev->offset;
 		blocksize = dev->envsize;
 		sectors = dev->envsectors ? dev->envsectors : 1;
-		ret = 0;
 
 		while (count > 0) {
 			skip = is_nand_badblock(dev, start);
 			if (skip < 0) {
-				close(dev->fd);
 				return -EIO;
 			}
 
@@ -436,11 +462,9 @@ static int mtdread(struct uboot_flash_env *dev, void *data)
 				blocksize = count;
 
 			if (lseek(dev->fd, start, SEEK_SET) < 0) {
-				close(dev->fd);
 				return -EIO;
 			}
 			if (read(dev->fd, data, blocksize) != blocksize) {
-				close(dev->fd);
 				return -EIO;
 			}
 			start += dev->sectorsize;
@@ -569,14 +593,17 @@ fileprotect_out:
 
 static int filewrite(struct uboot_flash_env *dev, void *data)
 {
-	int ret;
+	int ret = 0;
 
 	ret = fileprotect(dev, false);
 	if (ret < 0)
 		return ret;
 
 	if (dev->offset)
-		lseek(dev->fd, dev->offset, SEEK_SET);
+		ret = lseek(dev->fd, dev->offset, SEEK_SET);
+
+	if (ret < 0)
+		return ret;
 
 	ret = write(dev->fd, data, dev->envsize);
 
@@ -587,7 +614,7 @@ static int filewrite(struct uboot_flash_env *dev, void *data)
 
 static int mtdwrite(struct uboot_flash_env *dev, void *data)
 {
-	int ret;
+	int ret = 0;
 	struct erase_info_user erase;
 	size_t count;
 	size_t blocksize;
@@ -604,8 +631,6 @@ static int mtdwrite(struct uboot_flash_env *dev, void *data)
 		erase.length = dev->sectorsize;
 		sectors = dev->envsectors ? dev->envsectors : 1;
 		buf = data;
-		ret = 0;
-
 		while (count > 0) {
 			erase.start = start;
 
@@ -660,7 +685,8 @@ devwrite_out:
 
 static int ubi_update_volume(struct uboot_flash_env *dev)
 {
-	return ioctl(dev->fd, UBI_IOCVOLUP, &dev->envsize);
+	int64_t envsize = dev->envsize;
+	return ioctl(dev->fd, UBI_IOCVOLUP, &envsize);
 }
 
 static int ubiwrite(struct uboot_flash_env *dev, void *data)
@@ -684,7 +710,6 @@ static int devwrite(struct uboot_ctx *ctx, unsigned int copy, void *data)
 		return -EINVAL;
 
 	dev = &ctx->envdevs[copy];
-
 	dev->fd = open(dev->devname, O_RDWR);
 	if (dev->fd < 0)
 		return -EBADF;
@@ -792,6 +817,7 @@ int libuboot_env_store(struct uboot_ctx *ctx)
 						entry->name,
 						attr_tostring(entry->type),
 						access_tostring(entry->access));
+				first = false;
 			}
 		}
 	}
@@ -928,7 +954,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 
 	if (ctx->valid) {
 		for (line = data; *line; line = next + 1) {
-			char *name, *value, *tmp;
+			char *value;
 
 			/*
 			 * Search the end of the string pointed by line
@@ -1030,7 +1056,6 @@ static int libuboot_load(struct uboot_ctx *ctx)
 #define LINE_LENGTH 1024
 int libuboot_load_file(struct uboot_ctx *ctx, const char *filename)
 {
-	int fd;
 	FILE *fp;
 	char *buf;
 	char *name, *value;
@@ -1038,7 +1063,10 @@ int libuboot_load_file(struct uboot_ctx *ctx, const char *filename)
 	if (!filename)
 		return -EBADF;
 
-	fp = fopen(filename, "r");
+	if (strcmp(filename, "-") == 0)
+		fp = fdopen(0, "r");
+	else
+		fp = fopen(filename, "r");
 	if (!fp)
 		return -EACCES;
 
@@ -1066,6 +1094,9 @@ int libuboot_load_file(struct uboot_ctx *ctx, const char *filename)
 
 		name = buf;
 
+		if (!strlen(value))
+			value = NULL;
+
 		libuboot_set_env(ctx, name, value);
 	}
 	fclose(fp);
@@ -1084,6 +1115,8 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 	int ndev = 0;
 	struct uboot_flash_env *dev;
 	char *tmp;
+	char *path;
+	int retval = 0;
 
 	if (!config)
 		return -EINVAL;
@@ -1113,32 +1146,52 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 		if (ret < 3 || !tmp)
 			continue;
 
+		/*
+		 * If size is set but zero, entry is wrong
+		 */
+		if (!dev->envsize) {
+			retval = -EINVAL;
+			break;
+		}
+
 		if (!ctx->size)
 			ctx->size = dev->envsize;
 
 		if (tmp) {
-			strncpy(dev->devname, tmp, sizeof(dev->devname));
+			if ((path = realpath(tmp, NULL)) == NULL) {
+				free(tmp);
+				retval = -EINVAL;
+				break;
+			}
+
+			memset(dev->devname, 0, sizeof(dev->devname));
+			strncpy(dev->devname, path, sizeof(dev->devname) - 1);
 			free(tmp);
+			free(path);
 		}
 
-		if (check_env_device(ctx, dev) < 0)
-			return -EINVAL;
+		if (check_env_device(ctx, dev) < 0) {
+			retval = -EINVAL;
+			break;
+		}
 
 		ndev++;
 		dev++; 
 
 		if (ndev >= 2) {
 			ctx->redundant = true;
-			if (check_compatible_devices(ctx) < 0)
-				return -EINVAL;
+			if (!check_compatible_devices(ctx))
+				retval = -EINVAL;
 			break;
 		}
 	}
+	if (ndev == 0)
+		retval = -EINVAL;
 
 	fclose(fp);
 	free(line);
 
-	return 0;
+	return retval;
 }
 
 static bool libuboot_validate_flags(struct var_entry *entry, const char *value)
@@ -1196,7 +1249,6 @@ int libuboot_set_env(struct uboot_ctx *ctx, const char *varname, const char *val
 {
 	struct var_entry *entry, *elm, *lastentry;
 	struct vars *envs = &ctx->varlist;
-
 	entry = __libuboot_get_env(envs, varname);
 	if (entry) {
 		if (libuboot_validate_flags(entry, value)) {
@@ -1229,7 +1281,6 @@ int libuboot_set_env(struct uboot_ctx *ctx, const char *varname, const char *val
 		free(entry);
 		return -ENOMEM;
 	}
-
 	lastentry = NULL;
 	LIST_FOREACH(elm, envs, next) {
 		if (strcmp(elm->name, varname) > 0) {
@@ -1291,7 +1342,8 @@ int libuboot_configure(struct uboot_ctx *ctx,
 		for (i = 0; i < 2; i++, envdevs++, dev++) {
 			if (!envdevs)
 				break;
-			strncpy(dev->devname, envdevs->devname, sizeof(dev->devname));
+			memset(dev->devname, 0, sizeof(dev->devname));
+			strncpy(dev->devname, envdevs->devname, sizeof(dev->devname) - 1);
 			dev->envsize = envdevs->envsize;
 			dev->sectorsize = envdevs->sectorsize;
 			dev->envsectors = envdevs->envsectors;
@@ -1301,7 +1353,7 @@ int libuboot_configure(struct uboot_ctx *ctx,
 
 			if (i > 0) {
 				ctx->redundant = true;
-				if (check_compatible_devices(ctx) < 0)
+				if (!check_compatible_devices(ctx))
 					return -EINVAL;
 			}
 		}
@@ -1333,7 +1385,7 @@ int libuboot_initialize(struct uboot_ctx **out,
 }
 
 int libuboot_open(struct uboot_ctx *ctx) {
-	if (!ctx || !ctx->envdevs)
+	if (!ctx)
 		return -EINVAL;
 	libuboot_lock(ctx);
 
@@ -1343,7 +1395,7 @@ int libuboot_open(struct uboot_ctx *ctx) {
 void libuboot_close(struct uboot_ctx *ctx) {
 	struct var_entry *e, *tmp;
 
-	if (!ctx || !ctx->envdevs)
+	if (!ctx)
 		return;
 	ctx->valid = false;
 	libuboot_unlock(ctx);
@@ -1353,6 +1405,7 @@ void libuboot_close(struct uboot_ctx *ctx) {
 			free(e->name);
 		if (e->value)
 			free(e->value);
+		LIST_REMOVE(e, next);
 		free(e);
 	}
 }
