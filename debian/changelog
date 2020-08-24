@@ -1,3 +1,13 @@
+libubootenv (0.2-2) unstable; urgency=medium
+
+  * update d/watch
+    Use uscan's git mode, verifying OpenPGP. (Closes: #968282)
+    Thanks to Bastian Germann <bage@linutronix.de>.
+  * Fix build with dpkg-buildpackage on stable. (Closes: #967487)
+    Thanks to Gylstorff Quirin <quirin.gylstorff@siemens.com>.
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 24 Aug 2020 13:42:43 +0900
+
 libubootenv (0.2-1) unstable; urgency=medium
 
   * Update to 0.2.
