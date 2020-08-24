@@ -1,4 +1,0 @@
-0001-Unifies-the-functionality-provided-by-CMake-to-lower.patch
-0002-Add-support-GNUInstallDirs.patch
-0003-Change-name-of-the-output-static-library-to-libuboot.patch
-0004-Add-the-static-library-for-installation.patch
