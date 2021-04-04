@@ -1,3 +1,16 @@
+libubootenv (0.3-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload
+
+  [ Dave Jones ]
+  * Added symbols for libubootenv0.1 (Closes: #969216)
+
+  [ Bastian Germann ]
+  * Compile with NDEBUG set (Closes: #985948)
+  * Let libubootenv-dev depend on zlib1g-dev (Closes: #969026)
+
+ -- Bastian Germann <bastiangermann@fishpost.de>  Sun, 04 Apr 2021 11:37:55 +0200
+
 libubootenv (0.3-1) unstable; urgency=medium
 
   * Update to 0.3.
