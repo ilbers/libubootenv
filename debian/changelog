@@ -1,6 +1,4 @@
-libubootenv (0.3-1.1) unstable; urgency=medium
-
-  * Non-maintainer upload
+libubootenv (0.3-2) unstable; urgency=medium
 
   [ Dave Jones ]
   * Added symbols for libubootenv0.1 (Closes: #969216)
@@ -9,7 +7,7 @@ libubootenv (0.3-1.1) unstable; urgency=medium
   * Compile with NDEBUG set (Closes: #985948)
   * Let libubootenv-dev depend on zlib1g-dev (Closes: #969026)
 
- -- Bastian Germann <bastiangermann@fishpost.de>  Sun, 04 Apr 2021 11:37:55 +0200
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 06 Apr 2021 09:45:58 +0900
 
 libubootenv (0.3-1) unstable; urgency=medium
 
