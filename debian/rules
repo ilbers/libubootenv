@@ -2,8 +2,12 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+# disable libubootenv debug prints, as these break fw_printenv output.
+export DEB_CFLAGS_MAINT_APPEND=-DNDEBUG
+
 CMAKE_FLAGS = \
 	-DCMAKE_INSTALL_INCLUDEDIR="include/$(DEB_HOST_MULTIARCH)"
+
 %:
 	dh $@
 
