@@ -3,7 +3,6 @@
 #export DH_VERBOSE=1
 
 CMAKE_FLAGS = \
-	-DBUILD_DOCS=ON \
 	-DCMAKE_INSTALL_INCLUDEDIR="include/$(DEB_HOST_MULTIARCH)"
 %:
 	dh $@
