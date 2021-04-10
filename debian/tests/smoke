@@ -1,0 +1,44 @@
+#!/bin/sh
+set -e
+set -u
+
+# create a temporary working directory
+WORKDIR="$(mktemp -d)"
+trap "rm -rf $WORKDIR" 0 INT QUIT ABRT PIPE TERM
+cd "$WORKDIR"
+
+# create a config file
+echo "$WORKDIR/test.img 0x0 0x2000" > fw_env.config
+
+# create the test image file which will hold our environment
+touch test.img
+
+# create initial environment from empty default (/dev/null).
+# redirect stderr message: Cannot read environment, using default
+fw_setenv -c ./fw_env.config -f /dev/null foo bar 2>&1
+
+# write more values to the environment
+fw_setenv -c ./fw_env.config lala baba
+fw_setenv -c ./fw_env.config apa bepa
+
+# read back values and verify results.
+
+## verify we have 3 rows in total.
+ENVROWS="$(fw_printenv -c ./fw_env.config | wc -l)"
+if [ "$ENVROWS" != 3 ]; then
+	echo "Error: expected 3 values in env, but found '$ENVROWS'." >&2
+fi
+
+## verify the key foo has value bar
+FOO="$(fw_printenv -c ./fw_env.config foo)"
+if [ "$FOO" != "foo=bar" ]; then
+	echo "Error: expected foo=bar, but got '$FOO'." >&2
+fi
+
+## verify only fetching value of lala returns baba.
+LALA="$(fw_printenv -c ./fw_env.config -n lala)"
+if [ "$LALA" != "baba" ]; then
+	echo "Error: reading lala expected baba, got '$LALA'." >&2
+fi
+
+
