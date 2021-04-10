@@ -1,3 +1,14 @@
+libubootenv (0.3-3) unstable; urgency=medium
+
+  [ Andreas Henriksson ]
+  * debian/rules: Remove unused variables
+  * debian/rules: Remove CMAKE_VERBOSE_MAKEFILE, set by dh as needed
+  * debian/rules: Drop non-existent BUILD_DOCS option
+  * Define NDEBUG to avoid debug prints (Closes: #985948)
+  * Add autopkgtest smoketest of fw_{print,set}env
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Sun, 11 Apr 2021 08:32:03 +0900
+
 libubootenv (0.3-2) unstable; urgency=medium
 
   [ Dave Jones ]
