@@ -1,3 +1,11 @@
+libubootenv (0.3.2-0.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * New upstream version 0.3.2 (Closes: #981642)
+  * Update symbols for correct SOVERSION
+
+ -- Andreas Henriksson <andreas@fatal.se>  Tue, 04 May 2021 09:52:08 +0200
+
 libubootenv (0.3-3) unstable; urgency=medium
 
   [ Andreas Henriksson ]
