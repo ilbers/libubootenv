@@ -1,4 +1,4 @@
-libubootenv.so.0.3 libubootenv0.1 #MINVER#
+libubootenv.so.0 libubootenv0.1 #MINVER#
  libuboot_close@Base 0.2
  libuboot_configure@Base 0.2
  libuboot_env_store@Base 0.2
