@@ -268,7 +268,7 @@ static int ubi_update_name(struct uboot_flash_env *dev)
 	int dev_id, vol_id, ret = -EBADF;
 	char *sep;
 
-	sep = index(dev->devname, ':');
+	sep = index(dev->devname, DEVNAME_SEPARATOR);
 	if (sep)
 	{
 		memset(device, 0, DEVNAME_MAX_LENGTH);
@@ -292,6 +292,54 @@ static int ubi_update_name(struct uboot_flash_env *dev)
 
 out:
 	return ret;
+}
+
+static int normalize_device_path(char *path, struct uboot_flash_env *dev)
+{
+	char *sep = NULL, *normalized = NULL;
+	size_t normalized_len = 0, volume_len = 0, output_len = 0;
+
+	/*
+	 * if volume name is present, split into device path and volume
+	 * since only the device path needs normalized
+	 */
+	sep = index(path, DEVNAME_SEPARATOR);
+	if (sep)
+	{
+		volume_len = strlen(sep);
+		*sep = '\0';
+	}
+
+	if ((normalized = realpath(path, NULL)) == NULL)
+	{
+		/* device file didn't exist */
+		return -EINVAL;
+	}
+
+	normalized_len = strlen(normalized);
+	output_len = sizeof(dev->devname) - 1; /* leave room for null */
+	if ((normalized_len + volume_len) > output_len)
+	{
+		/* full name is too long to fit */
+		free(normalized);
+		return -EINVAL;
+	}
+
+	/*
+	 * save normalized path to device file,
+	 * and possibly append separator char & volume name
+	 */
+	memset(dev->devname, 0, sizeof(dev->devname));
+	strncpy(dev->devname, normalized, output_len);
+	free(normalized);
+
+	if (sep)
+	{
+		*sep = DEVNAME_SEPARATOR;
+		strncpy(dev->devname + normalized_len, sep, output_len - normalized_len);
+	}
+
+	return 0;
 }
 
 static int check_env_device(struct uboot_ctx *ctx, struct uboot_flash_env *dev)
@@ -407,7 +455,25 @@ static int fileread(struct uboot_flash_env *dev, void *data)
 	if (ret < 0)
 		return ret;
 
-	ret = read(dev->fd, data, dev->envsize);
+	size_t remaining = dev->envsize;
+
+	while (1) {
+		ret = read(dev->fd, data, remaining);
+
+		if (ret == 0 && remaining > 0)
+		    return -1;
+
+		if (ret < 0)
+			break;
+
+		remaining -= ret;
+		data += ret;
+
+		if (!remaining) {
+			ret = dev->envsize;
+			break;
+		}
+	}
 
 	return ret;
 }
@@ -580,7 +646,6 @@ static int fileprotect(struct uboot_flash_env *dev, bool on)
 	if(on == false){
 		ret_int = write(fd_force_ro, &c_unprot_char, 1);
 	} else {
-		fsync(dev->fd);
 		ret_int = write(fd_force_ro, &c_prot_char, 1);
 	}
 	close(fd_force_ro);
@@ -605,7 +670,24 @@ static int filewrite(struct uboot_flash_env *dev, void *data)
 	if (ret < 0)
 		return ret;
 
-	ret = write(dev->fd, data, dev->envsize);
+	size_t remaining = dev->envsize;
+
+	while (1) {
+		ret = write(dev->fd, data, remaining);
+
+		if (ret < 0)
+			break;
+
+		remaining -= ret;
+		data += ret;
+
+		if (!remaining) {
+			ret = dev->envsize;
+			break;
+		}
+	}
+
+	fsync(dev->fd);
 
 	fileprotect(dev, true);  // no error handling, keep ret from write
 
@@ -820,6 +902,7 @@ int libuboot_env_store(struct uboot_ctx *ctx)
 				first = false;
 			}
 		}
+		buf++;
 	}
 	*buf++ = '\0';
 
@@ -861,7 +944,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 	int ret, i;
 	int copies = 1;
 	void *buf[2];
-	size_t bufsize;
+	size_t bufsize, usable_envsize;
 	struct uboot_flash_env *dev;
 	bool crcenv[2];
 	unsigned char flags[2];
@@ -873,7 +956,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 	struct var_entry *entry;
 
 	ctx->valid = false;
-
+    
 	bufsize = ctx->size;
 	if (ctx->redundant) {
 		copies++;
@@ -881,6 +964,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 		offsetdata = offsetof(struct uboot_env_redund, data);
 		offsetcrc = offsetof(struct uboot_env_redund, crc);
 	}
+	usable_envsize = ctx->size - offsetdata;
 	buf[0] = malloc(bufsize);
 	if (!buf[0])
 		return -ENOMEM;
@@ -899,7 +983,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 			return -EIO;
 		}
 		crc = *(uint32_t *)(buf[i] + offsetcrc);
-		dev->crc = crc32(0, (uint8_t *)data, ctx->size - offsetdata);
+		dev->crc = crc32(0, (uint8_t *)data, usable_envsize);
 		crcenv[i] = dev->crc == crc;
 		if (ctx->redundant)
 			dev->flags = *(uint8_t *)(buf[i] + offsetflags);
@@ -960,7 +1044,7 @@ static int libuboot_load(struct uboot_ctx *ctx)
 			 * Search the end of the string pointed by line
 			 */
 			for (next = line; *next; ++next) {
-				if ((next - (char *)data) > ctx->size) {
+				if ((next - (char *)data) > usable_envsize) {
 					free(buf[0]);
 					return -EIO;
 				}
@@ -1115,7 +1199,6 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 	int ndev = 0;
 	struct uboot_flash_env *dev;
 	char *tmp;
-	char *path;
 	int retval = 0;
 
 	if (!config)
@@ -1158,16 +1241,12 @@ int libuboot_read_config(struct uboot_ctx *ctx, const char *config)
 			ctx->size = dev->envsize;
 
 		if (tmp) {
-			if ((path = realpath(tmp, NULL)) == NULL) {
+			if (normalize_device_path(tmp, dev) < 0) {
 				free(tmp);
 				retval = -EINVAL;
 				break;
 			}
-
-			memset(dev->devname, 0, sizeof(dev->devname));
-			strncpy(dev->devname, path, sizeof(dev->devname) - 1);
 			free(tmp);
-			free(path);
 		}
 
 		if (check_env_device(ctx, dev) < 0) {
@@ -1249,6 +1328,11 @@ int libuboot_set_env(struct uboot_ctx *ctx, const char *varname, const char *val
 {
 	struct var_entry *entry, *elm, *lastentry;
 	struct vars *envs = &ctx->varlist;
+
+	/* U-Boot setenv treats '=' as an illegal character for variable names */
+	if (strchr(varname, '='))
+		return -EINVAL;
+
 	entry = __libuboot_get_env(envs, varname);
 	if (entry) {
 		if (libuboot_validate_flags(entry, value)) {
@@ -1344,9 +1428,13 @@ int libuboot_configure(struct uboot_ctx *ctx,
 				break;
 			memset(dev->devname, 0, sizeof(dev->devname));
 			strncpy(dev->devname, envdevs->devname, sizeof(dev->devname) - 1);
+			dev->offset = envdevs->offset;
 			dev->envsize = envdevs->envsize;
 			dev->sectorsize = envdevs->sectorsize;
 			dev->envsectors = envdevs->envsectors;
+
+			if (!ctx->size)
+				ctx->size = dev->envsize;
 
 			if (check_env_device(ctx, dev) < 0)
 				return -EINVAL;

@@ -13,14 +13,15 @@ SET(include_HEADERS
 include(GNUInstallDirs) # for the CMAKE_INSTALL_LIBDIR variable
 
 add_library(ubootenv SHARED ${libubootenv_SOURCES} ${include_HEADERS})
-SET_TARGET_PROPERTIES(ubootenv PROPERTIES SOVERSION ${SOVERSION})
+SET_TARGET_PROPERTIES(ubootenv PROPERTIES VERSION ${VERSION} SOVERSION ${SOVERSION})
 
 ADD_LIBRARY(ubootenv_static STATIC ${libubootenv_SOURCES} ${include_HEADERS})
 SET_TARGET_PROPERTIES(ubootenv_static PROPERTIES OUTPUT_NAME ubootenv)
 add_executable(fw_printenv fw_printenv.c)
 add_executable(fw_setenv fw_setenv.c)
-target_link_libraries(fw_printenv ubootenv z)
-target_link_libraries(fw_setenv ubootenv z)
+target_link_libraries(ubootenv z)
+target_link_libraries(fw_printenv ubootenv)
+target_link_libraries(fw_setenv ubootenv)
 
 install (TARGETS ubootenv ubootenv_static DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install (FILES libuboot.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
