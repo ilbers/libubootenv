@@ -1,0 +1,41 @@
+.\" Copyright © 2008 Per Andersson <avtobiff@gmail.com>
+.\" Copyright © 2021 Bastian Germann
+.\" This man page is covered by the GNU General Public License (GPLv2 or higher).
+.TH fw_setenv 8 2021-06-23
+.SH NAME
+fw_setenv \- Tool for modifying the environment for the bootloader U\-Boot
+.SH SYNOPSIS
+fw_setenv \fIname\fP [ \fIvalue\fP ]
+.SH DESCRIPTION
+fw_setenv is a simple tool for modifying the environment for the bootloader U-Boot.
+The variable \fIname\fP is updated to hold \fIvalue\fP if it is already set in the environment, else it is created and set.
+If only the \fIname\fP argument is given, the corresponding variable is deleted.
+This version of fw_printenv stems from libubootenv and does not hold a built-in default environment.
+Instead, the default environment is read from a file.
+.SH OPTIONS
+.TP
+.B -h
+print a help message
+.TP
+.B -c, --config <filename>
+configuration file (old fw_env.config)
+.TP
+.B -f, --defenv <filename>
+default environment if no one found
+.TP
+.B -V
+print program's version
+.TP
+.B -s, --script <filename>
+read variables to be set from a script
+.SH FILES
+.TP
+.B /etc/fw_env.config
+Configuration file for fw_setenv.
+Default value of the --config option.
+.TP
+.B /etc/u-boot-initial-env
+Default U-Boot environment.
+Default value of the --defenv option.
+.SH SEE ALSO
+fw_printenv(8)

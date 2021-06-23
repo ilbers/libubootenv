@@ -1,0 +1,42 @@
+.\" Copyright © 2008 Per Andersson <avtobiff@gmail.com>
+.\" Copyright © 2021 Bastian Germann
+.\" This man page is covered by the GNU General Public License (GPLv2 or higher).
+.TH fw_printenv 8 2021-06-23
+.SH NAME
+fw_printenv \- Tool for printing the environment for the bootloader U-Boot
+.SH SYNOPSIS
+fw_printenv [ \fIname\fP ... ]
+.SH DESCRIPTION
+fw_printenv is a simple tool for printing the environment for the bootloader U-Boot.
+All environment variables matching the names given as arguments are shown.
+If fw_printenv is called without any arguments the entire environment is printed.
+This version of fw_printenv stems from libubootenv and does not hold a built-in default environment.
+Instead, the default environment is read from a file.
+.SH OPTIONS
+.TP
+.TP
+.B -h
+print a help message
+.TP
+.B -c, --config <filename>
+configuration file (old fw_env.config)
+.TP
+.B -f, --defenv <filename>
+default environment if no one found
+.TP
+.B -V
+print program's version
+.TP
+.B -n, --no-header
+do not print variable name
+.SH FILES
+.TP
+.B /etc/fw_env.config
+Configuration file for fw_printenv.
+Default value of the --config option.
+.TP
+.B /etc/u-boot-initial-env
+Default U-Boot environment.
+Default value of the --defenv option.
+.SH SEE ALSO
+fw_setenv(8)
