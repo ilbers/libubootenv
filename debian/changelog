@@ -9,6 +9,7 @@ libubootenv (0.3.2-1) UNRELEASED; urgency=medium
     - Use debhelper-compat instead of debhelper, and update to 13.
     - Bump Standards-Version to 4.6.0.1 (no change).
   * Remove d/compat.
+  * Add d/upstream/metadata.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 14 Dec 2021 08:38:44 +0900
 
