@@ -1,8 +1,13 @@
 libubootenv (0.3.2-1) UNRELEASED; urgency=medium
 
+  [ Bastian Germann ]
   * Add manpages based on u-boot-tools (Closes: #986361)
 
- -- Bastian Germann <bastiangermann@fishpost.de>  Sun, 26 Sep 2021 16:43:11 +0200
+  [ Nobuhiro Iwamatsu ]
+  * d/control:
+    - Add Rules-Requires-Root: no
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 14 Dec 2021 08:35:36 +0900
 
 libubootenv (0.3.2-0.1) unstable; urgency=medium
 
