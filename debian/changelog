@@ -6,8 +6,10 @@ libubootenv (0.3.2-1) UNRELEASED; urgency=medium
   [ Nobuhiro Iwamatsu ]
   * d/control:
     - Add Rules-Requires-Root: no
+    - Use debhelper-compat instead of debhelper, and update to 13.
+  * Remove d/compat.
 
- -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 14 Dec 2021 08:35:36 +0900
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 14 Dec 2021 08:38:44 +0900
 
 libubootenv (0.3.2-0.1) unstable; urgency=medium
 
