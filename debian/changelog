@@ -1,4 +1,4 @@
-libubootenv (0.3.2-1) UNRELEASED; urgency=medium
+libubootenv (0.3.2-1) unstable; urgency=medium
 
   [ Bastian Germann ]
   * Add manpages based on u-boot-tools (Closes: #986361)
