@@ -2,7 +2,7 @@ Source: libubootenv
 Priority: optional
 Maintainer: Nobuhiro Iwamatsu <iwamatsu@debian.org>
 Uploaders: SZ Lin (林上智) <szlin@debian.org>
-Build-Depends: debhelper-compat (= 13), cmake, zlib1g-dev, graphviz, doxygen
+Build-Depends: debhelper-compat (= 13), cmake, zlib1g-dev, libyaml-dev, graphviz, doxygen
 Standards-Version: 4.6.0.1
 Section: utils
 Rules-Requires-Root: no
