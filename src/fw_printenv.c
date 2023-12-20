@@ -16,8 +16,12 @@
 
 #include "libuboot.h"
 
-#ifndef VERSION
-#define VERSION "0.1"
+#ifndef DEFAULT_CFG_FILE
+#define DEFAULT_CFG_FILE "/etc/fw_env.config"
+#endif
+
+#ifndef DEFAULT_ENV_FILE
+#define DEFAULT_ENV_FILE "/etc/u-boot-initial-env"
 #endif
 
 #define PROGRAM_SET	"fw_setenv"
@@ -29,6 +33,7 @@ static struct option long_options[] = {
 	{"config", required_argument, NULL, 'c'},
 	{"defenv", required_argument, NULL, 'f'},
 	{"script", required_argument, NULL, 's'},
+	{"namespace", required_argument, NULL, 'm'},
 	{NULL, 0, NULL, 0}
 };
 
@@ -38,10 +43,11 @@ static void usage(char *program, bool setprogram)
 	fprintf(stdout, "Usage %s [OPTION]\n",
 			program);
 	fprintf(stdout,
-		" -h,                              : print this help\n"
-		" -c, --config <filename>          : configuration file (old fw_env.config)\n"
-		" -f, --defenv <filename>          : default environment if no one found\n"
-		" -V,                              : print version and exit\n"
+		" -h, --help                       : print this help\n"
+		" -c, --config <filename>          : configuration file (by default: " DEFAULT_CFG_FILE ")\n"
+		" -f, --defenv <filename>          : default environment if no one found (by default: " DEFAULT_ENV_FILE ")\n"
+		" -m, --namespace <name>           : chose one of sets in the YAML file, default first in YAML\n"
+		" -V, --version                    : print version and exit\n"
 	);
 	if (!setprogram)
 		fprintf(stdout,
@@ -50,15 +56,28 @@ static void usage(char *program, bool setprogram)
 	else
 		fprintf(stdout,
 		" -s, --script <filename>          : read variables to be set from a script\n"
+		"\n"
+		"Script Syntax:\n"
+		" key=value\n"
+		" lines starting with '#' are treated as comment\n"
+		" lines without '=' are ignored\n"
+		"\n"
+		"Script Example:\n"
+		" netdev=eth0\n"
+		" kernel_addr=400000\n"
+		" foo=empty empty empty    empty empty empty\n"
+		" bar\n"
+		"\n"
 		);
 }
-	
+
 int main (int argc, char **argv) {
-	struct uboot_ctx *ctx;
-	char *options = "Vc:f:s:nh";
+	struct uboot_ctx *ctx = NULL;
+	char *options = "Vc:f:s:nhm:";
 	char *cfgfname = NULL;
 	char *defenvfile = NULL;
 	char *scriptfile = NULL;
+	const char *namespace = NULL;
 	int c, i;
 	int ret = 0;
 	void *tmp;
@@ -67,6 +86,7 @@ int main (int argc, char **argv) {
 	bool is_setenv = false;
 	bool noheader = false;
 	bool default_used = false;
+	struct uboot_version_info *version;
 
 	/*
 	 * As old tool, there is just a tool with symbolic link
@@ -92,7 +112,7 @@ int main (int argc, char **argv) {
 			noheader = true;
 			break;
 		case 'V':
-			fprintf(stdout, "%s\n", VERSION);
+			fprintf(stdout, "%s %u\n", libuboot_version_info()->version, libuboot_version_info()->version_num);
 			exit(0);
 		case 'h':
 			usage(progname, is_setenv);
@@ -100,30 +120,44 @@ int main (int argc, char **argv) {
 		case 'f':
 			defenvfile = strdup(optarg);
 			break;
+		case 'm':
+			namespace = strdup(optarg);
+			break;
 		case 's':
 			scriptfile = strdup(optarg);
 			break;
 		}
 	}
-	
+
 	argc -= optind;
 	argv += optind;
 
-	if (libuboot_initialize(&ctx, NULL) < 0) {
+
+	if (!cfgfname)
+		cfgfname = DEFAULT_CFG_FILE;
+
+	/*
+	 * Try first new format, fallback to legacy
+	 */
+	ret = libuboot_read_config_ext(&ctx, cfgfname);
+	if (ret) {
 		fprintf(stderr, "Cannot initialize environment\n");
 		exit(1);
 	}
 
-	if (!cfgfname)
-		cfgfname = "/etc/fw_env.config";
+	if (!namespace)
+		namespace = libuboot_namespace_from_dt();
 
-	if ((ret = libuboot_read_config(ctx, cfgfname)) < 0) {
-		fprintf(stderr, "Configuration file wrong or corrupted\n");
-		exit (ret);
+	if (namespace)
+		ctx = libuboot_get_namespace(ctx, namespace);
+
+	if (!ctx) {
+		fprintf(stderr, "Namespace %s not found\n", namespace);
+		exit (1);
 	}
 
 	if (!defenvfile)
-		defenvfile = "/etc/u-boot-initial-env";
+		defenvfile = DEFAULT_ENV_FILE;
 
 	if ((ret = libuboot_open(ctx)) < 0) {
 		fprintf(stderr, "Cannot read environment, using default\n");
@@ -159,20 +193,29 @@ int main (int argc, char **argv) {
 			need_store = true;
 		} else {
 			for (i = 0; i < argc; i += 2) {
-				if (strchr(argv[i], '=')) {
-					fprintf(stderr, "Error: illegal character '=' in variable name \"%s\"\n", argv[i]);
-					exit(1);
-				}
-
 				value = libuboot_get_env(ctx, argv[i]);
 				if (i + 1 == argc) {
 					if (value != NULL) {
-						libuboot_set_env(ctx, argv[i], NULL);
+						int ret;
+
+						ret = libuboot_set_env(ctx, argv[i], NULL);
+						if (ret) {
+							fprintf(stderr, "libuboot_set_env failed: %d\n", ret);
+							exit(-ret);
+						}
+
 						need_store = true;
 					}
 				} else {
 					if (value == NULL || strcmp(value, argv[i+1]) != 0) {
-						libuboot_set_env(ctx, argv[i], argv[i+1]);
+						int ret;
+
+						ret = libuboot_set_env(ctx, argv[i], argv[i+1]);
+						if (ret) {
+							fprintf(stderr, "libuboot_set_env failed: %d\n", ret);
+							exit(-ret);
+						}
+
 						need_store = true;
 					}
 				}
